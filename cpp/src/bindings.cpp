@@ -3,8 +3,8 @@
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(libmath, m) {
-  m.def("Hello", Hello, "Hello function");
+PYBIND11_MODULE(openfhe_matrix, m) {
+//   m.def("Hello", Hello, "Hello function");
   m.def("EvalMultMatVec",
         EvalMultMatVec,
         "Product of a matrix and a vector");

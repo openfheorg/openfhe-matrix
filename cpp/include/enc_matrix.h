@@ -9,7 +9,13 @@
 #define ENC_MATRIX_API
 
 void test();
-CT EvalMultMatVec(CC& cc, KeyPair keys, MatKeys eval_keys, int type, int row_size, const CT& ct_vec, const CT& ct_mat);
+CT EvalMultMatVec(const CC &cc,
+                  const KeyPair& keys,
+                  const MatKeys& eval_keys,
+                  int type,
+                  int row_size,
+                  const CT &ct_vec,
+                  const CT &ct_mat);
 
 CT EvalLinTransSigma(CC cc, KeyPair keys, const CT c_vec, const int row_size);
 

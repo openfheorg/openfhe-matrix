@@ -24,8 +24,8 @@
 // }
 
 void DemoMatVec(bool verbose = true) {
-  int32_t n_rows = 2;
-  int32_t n_cols = 4;
+  uint32_t n_rows = 2;
+  uint32_t n_cols = 4;
 
   std::vector<std::vector<double>> omat = {
       {1, 1, 1, 0},
@@ -128,8 +128,8 @@ void DemoMatVec(bool verbose = true) {
 }
 
 void DemoMulMat(bool verbose = true) {
-  int32_t n_rows = 4;
-  int32_t n_cols = 4;
+  uint32_t n_rows = 4;
+  uint32_t n_cols = 4;
 
   std::vector<std::vector<double>> omat_1 = {
       {1, 1, 1, 0},

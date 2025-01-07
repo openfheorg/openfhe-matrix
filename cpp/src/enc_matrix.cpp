@@ -8,14 +8,13 @@ void test()
 /*
 Compute ct_matrix * ct_vector
 */
-CT EvalMultMatVec(
-  CC& context,
-  KeyPair keys,
-  MatKeys eval_keys,
-  int type,
-  int32_t row_size,
-  const CT& ct_vec,
-  const CT& ct_mat)
+CT EvalMultMatVec(const CC &context,
+                  const KeyPair& keys,
+                  const MatKeys& eval_keys,
+                  int type,
+                  int row_size,
+                  const CT &ct_vec,
+                  const CT &ct_mat)
 {
   CT ct_prod;
   auto ct_mult = context->EvalMult(ct_mat, ct_vec);

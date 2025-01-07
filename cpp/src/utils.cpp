@@ -1,7 +1,7 @@
 #include "utils.h"
 
 // utils implementation
-uint32_t NextPow2(const uint32_t x)
+uint32_t NextPow2(uint32_t x)
 {
   return pow(2, ceil(log(double(x)) / log(2.0)));
 };
