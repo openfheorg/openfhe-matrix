@@ -1,5 +1,4 @@
 import random
-# import pytest
 from openfhe import *
 from openfhe_matrix import *
 from helper import *
@@ -8,8 +7,8 @@ def matrix_square_mul(A, B, precision=2):
   
   print("Simple Test for Matrix Multiplications")
   
-  A = np.array([[1, 1, 1, 0], [2, 2, 2, 0], [3, 3, 3, 0], [4, 4, 4, 0]])
-  B = np.array([[1, 0, 1, 0], [1, 1, 0, 0], [3, 0, 3, 0], [3, 0, 2, 0]])
+  # A = np.array([[1, 1, 1, 0], [2, 2, 2, 0], [3, 3, 3, 0], [4, 4, 4, 0]])
+  # B = np.array([[1, 0, 1, 0], [1, 1, 0, 0], [3, 0, 3, 0], [3, 0, 2, 0]])
     
   vA = SMat._pack_row_wise(A,4,16)
   vB = SMat._pack_row_wise(B,4,16)
