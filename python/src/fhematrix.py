@@ -24,6 +24,13 @@ ROW_WISE = 0
 COL_WISE = 1
 DIAG_WISE = 2
 
+# pack matrix row-wise and vector column-wise, result is column-wise
+MM_CRC = 0
+# pack matrix column-wise and vector row-wise, result i row-wise
+MM_RCR = 1
+# pack matrix diagonal
+MM_DIAG = 2
+
 
 # Note:
 # - Build class PTMatrix:
@@ -106,9 +113,6 @@ class FHEMatrix:  # CTMatrix
 
         ctx = cc.Encrypt(pk, ptx)
 
-        # # ? This function should be outside of this class as user don't have secretkey in general
-        # # TODO I will move outside of this function later. It should be received as an input.
-
         return cls(
             ctx,
             shape,
@@ -120,7 +124,6 @@ class FHEMatrix:  # CTMatrix
 
     def decrypt(self, cc, sk, precision=3):
         result = cc.Decrypt(self.ctx, sk)
-        # print("DEBUG[decrypt]: ", self.shape, self.nums_slots)
         result.SetLength(self.nums_slots)
         result.GetFormattedValues(precision)
         result = result.GetRealPackedValue()
@@ -227,7 +230,28 @@ def _encode_vector(
 # Case 2. folder organization: our_lib.matmul_square (<===========)
 
 
-def matmul_square(cc, keys, ctm_A: FHEMatrix, ctm_B: FHEMatrix):
+def decrypt(cc, sk, data, nums_slots, precision=3):
+    result = cc.Decrypt(data, sk)
+    result.SetLength(nums_slots)
+    result.GetFormattedValues(precision)
+    result = result.GetRealPackedValue()
+    result = [round(result[i], precision) for i in range(nums_slots)]
+    return result
+
+
+def gen_sum_row_keys(cc, sk, block_size):
+    return cc.EvalSumRowsKeyGen(sk, None, block_size)
+
+
+def gen_sum_col_keys(cc, sk, block_size):
+    return cc.EvalSumColsKeyGen(sk)
+
+
+def gen_rotation_keys(cc, sk, rotation_indices):
+    cc.EvalRotateKeyGen(sk, rotation_indices)
+
+
+def mms_mult(cc, keys, ctm_A: FHEMatrix, ctm_B: FHEMatrix):
     """
     Matrix product of two array
 
@@ -241,7 +265,6 @@ def matmul_square(cc, keys, ctm_A: FHEMatrix, ctm_B: FHEMatrix):
     FHEMatrix
         Product of two square matrices
     """
-    # print(f"DEBUG[matmul_square] ctm_A.n_cols = {ctm_A.n_cols}")
     ct_prod = openfhe_matrix.EvalMatMulSquare(
         cc, keys, ctm_A.ctx, ctm_B.ctx, ctm_A.n_cols
     )
@@ -252,9 +275,15 @@ def matmul_square(cc, keys, ctm_A: FHEMatrix, ctm_B: FHEMatrix):
     return ctm_prod
 
 
-def matvec(ctm_mat, ctv_vec):
+def mv_mult(cc, keys, sum_col_keys, type, block_size, ctm_v, ctm_mat):
     """Matrix-vector dot product of two arrays."""
-    return None
+    ct_prod = openfhe_matrix.EvalMultMatVec(
+        cc, keys, sum_col_keys, type, block_size, ctm_v.ctx, ctm_mat.ctx
+    )
+    # ctm_prod = FHEMatrix(*ctm_v.copy_info())
+    # ctm_prod.ctx = ct_prod
+    # TODO: construct a FHEMatrix after receiving a product
+    return ct_prod
 
 
 def matrix_power(ctm_mat):
@@ -270,27 +299,30 @@ def matrix_transpose(ctm_mat):
     return None
 
 
-def dot(context, keys, ct_a, ct_b):
+def dot(cc, keys, ctm_A, ctm_B):
+    if not ctm_A.is_matrix and not ctm_B.is_matrix:
+        ct_product = cc.EvalMult(ctm_A.ctx, ctm_B.ctx)
+
     return None
 
 
 # entries-wise multiply
-def multiply(context, keys, ct_a, ct_b):
+def multiply(cc, keys, ctm_A, ctm_B):
     # Multiply arguments element-wise.
-    return None
+    return cc.EvalMult(ctm_A.ctx, ctm_B.ctx)
 
 
-def add(ct_a, ct_b):
+def add(cc, ctm_A, ctm_B):
     # Add arguments element-wise.
-    return ct_a.context.EvalAdd(ct_a, ct_b)
+    return cc.EvalAdd(ctm_A.ctx, ctm_B.ctx)
 
 
-def sub(context, keys, ct_a, ct_b):
+def sub(cc, keys, ctm_A, ctm_B):
     # Subtracts arguments element-wise.
-    return ct_a.context.EvalSub(ct_a, ct_b)
+    return cc.EvalSub(ctm_A.ctx, ctm_B.ctx)
 
 
-def sum(data, axis=None):
+def sum(cc, data, axis=None):
     """Sum of array elements over a given axis"""
     # todo: should we let user uses secretKey or regenerate
     # cc = data.context
