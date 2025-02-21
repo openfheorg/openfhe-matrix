@@ -3,6 +3,7 @@ import sys
 import numpy as np
 import copy
 import math
+from typing import Tuple
 
 # import openfhe related libraries
 import openfhe
@@ -24,107 +25,114 @@ COL_WISE = 1
 DIAG_WISE = 2
 
 
-class CryptoInfo:
-    def __init__(self, cc: CC, keys: KP, batch_size: int):
-        self.cc = cc
-        self.keys = keys
-        self.pk = keys.publicKey
-        self.sk = keys.secretKey
-        self.batch_size = batch_size
+# Note:
+# - Build class PTMatrix:
+# - Maybe work with raw np.array
+
+# class PTMatrix:
+# Maybe work with raw np.array
 
 
-class FHEMatrix:
-    # ? Should we only use public key or both
-    # ? Generate all possible rotation keys in advanced?
+# Implementation for Case 1
+# ? Should we only use public key or both
+# ? Generate all possible rotation keys in advanced?
+# we can get crypto context from ciphertext dont' need to input
+# gen_rotation keys: serialize keys seperate the function and let someone use that (us or user)
 
+# Case 1. 1 matrix = 1 ct
+# Case 2. 1 big matrix = multiples ct
+# Case 3. multiple small matrices = 1 ct
+# Maybe: class extension (later)
+
+
+class FHEMatrix:  # CTMatrix
     def __init__(
         self,
-        c_info: CryptoInfo,
         ctx: CT,
-        shape: int,
-        aut_rows: int,
-        aut_cols: int,
+        shape: Tuple[int, int],  # original dimensions. shape = (n_rows,n_cols)
         is_matrix: bool,
         nums_slots: int,
-        row_size: int = 1,
+        n_cols: int = 1,  # block_size
         type: int = ROW_WISE,
     ):
-        self.c_info = c_info
         self.ctx = ctx
         self.shape = shape
-        self.aut_rows = aut_rows
-        self.aut_cols = aut_cols
-        self.is_matrix = is_matrix
-        self.row_size = row_size
-        self.nums_slots = nums_slots
-        self.col_size = nums_slots // row_size
+        self.is_matrix = is_matrix  # plaintext matrix
+        self.n_cols = n_cols
+        self.nums_slots = nums_slots  # remove it
+        self.n_rows = nums_slots // n_cols  # change name to n_rows
         self.encoding_styles = type
 
     def copy_info(self):
         return (
-            self.c_info,
             self.ctx,
             self.shape,
-            self.aut_rows,
-            self.aut_cols,
             self.is_matrix,
             self.nums_slots,
-            self.row_size,
+            self.n_cols,
             self.encoding_styles,
         )
 
     @classmethod
-    def fhe_array(
+    def array(
         cls,
-        c_info: CryptoInfo,
+        cc,
+        pk,
         data: list,
         nums_slots: int,
-        row_size: int = 1,
+        block_size: int = 1,
         type: int = ROW_WISE,
     ):
-        aut_rows, aut_cols, is_matrix = get_shape(data)
-        print("data: \n", data)
-        print("encoding style =  ", type)
-        print("----> ", aut_rows, aut_cols, is_matrix)
-        rows = next_power2(aut_rows)
-        if is_matrix:
-            cols = next_power2(aut_cols)
-        else:
-            cols = 1
-        shape = (rows, cols)
-        col_size = nums_slots // row_size
+        """
+        block_size = row_size, number of repetitions, number of columns
+        block_size is important for packing vectors
+        """
+        org_rows, org_cols, is_matrix = get_shape(data)
+
+        # print("encoding style =  ", type)
+        # print("----> ", org_rows, org_cols, is_matrix)
 
         if is_matrix:
-            ptx = _encode_matrix(c_info.cc, data, nums_slots, row_size, type)
+            n_cols = next_power2(org_cols)
         else:
-            ptx = _encode_vector(c_info.cc, data, nums_slots, row_size, type)
+            n_cols = block_size
+        shape = (org_rows, org_cols)
+        n_rows = nums_slots // n_cols
 
-        ctx = c_info.cc.Encrypt(c_info.pk, ptx)
+        if is_matrix:
+            ptx = _encode_matrix(cc, data, nums_slots, n_cols, type)
+        else:
+            ptx = _encode_vector(cc, data, nums_slots, n_cols, type)
 
-        # ? This function should be outside of this class as user don't have secretkey in general
-        # TODO I will move outside of this function later. It should be received as an input.
-        c_info.cc.EvalRotateKeyGen(
-            c_info.sk,
-            [row_size, -row_size, col_size, -row_size],
-        )
+        ctx = cc.Encrypt(pk, ptx)
+
+        # # ? This function should be outside of this class as user don't have secretkey in general
+        # # TODO I will move outside of this function later. It should be received as an input.
+
         return cls(
-            c_info,
             ctx,
             shape,
-            aut_rows,
-            aut_cols,
             is_matrix,
             nums_slots,
-            row_size,
+            n_cols,
             type,
         )
 
-    def decrypt(self):
-        data = self.c_info.cc.Decrypt(self.ctx, self.c_info.sk)
-        data.SetLength(self.nums_slots)
+    def decrypt(self, cc, sk, precision=3):
+        result = cc.Decrypt(self.ctx, sk)
+        # print("DEBUG[decrypt]: ", self.shape, self.nums_slots)
+        result.SetLength(self.nums_slots)
+        result.GetFormattedValues(precision)
+        result = result.GetRealPackedValue()
+        n_rows, n_cols = self.shape
         if self.is_matrix == 1:
-            data = to_matrix(data, self.row_size)
-        return data
+            result = to_matrix(result, n_rows * n_cols, self.n_cols)
+            print(result)
+            result = [
+                [round(result[i][j], precision) for j in range(n_rows)]
+                for i in range(n_cols)
+            ]
+        return result
 
 
 #########################################
@@ -144,9 +152,13 @@ def get_shape(data):
     -------
     rows, cols, is_matrix
     """
+    # print("data: ", data)
     if isinstance(data, list) or isinstance(data, tuple):
         rows = len(data)
-        cols = len(data[0])
+        if isinstance(data[0], list) or isinstance(data[0], tuple):
+            cols = len(data[0])
+        else:
+            cols = 1
         is_matrix = 1 if cols > 1 else 0
         return rows, cols, is_matrix
 
@@ -168,14 +180,14 @@ def _encode_matrix(
 ) -> PT:
     """Encode a matrix or data without padding or replicate"""
 
-    # col_size = num_slots // row_size
-
     if type == ROW_WISE:
         packed_data = pack_mat_row_wise(data, row_size, num_slots)
     elif type == COL_WISE:
         packed_data = pack_mat_col_wise(data, row_size, num_slots)
     else:
         packed_data = [0]
+
+    print("DEBUG[_encode_matrix] ", packed_data)
 
     return cc.MakeCKKSPackedPlaintext(packed_data)
 
@@ -200,8 +212,6 @@ def _encode_vector(
             "ERROR: The number of repetitions in vector packing should be a power of two"
         )
 
-    # col_size = num_slots // row_size
-
     if type == ROW_WISE:
         packed_data = pack_vec_row_wise(data, row_size, num_slots)
     elif type == COL_WISE:
@@ -212,7 +222,12 @@ def _encode_vector(
     return cc.MakeCKKSPackedPlaintext(packed_data)
 
 
-def matmul_square(ctm_A: FHEMatrix, ctm_B: FHEMatrix):
+# Problem: Model
+# Case 1. design in OOP (Hints: create methods and add a wrapper to compute)  (I don't know how I should do now)
+# Case 2. folder organization: our_lib.matmul_square (<===========)
+
+
+def matmul_square(cc, keys, ctm_A: FHEMatrix, ctm_B: FHEMatrix):
     """
     Matrix product of two array
 
@@ -226,14 +241,12 @@ def matmul_square(ctm_A: FHEMatrix, ctm_B: FHEMatrix):
     FHEMatrix
         Product of two square matrices
     """
-    cc = ctm_A.c_info.cc
-    keys = ctm_A.c_info.keys
+    # print(f"DEBUG[matmul_square] ctm_A.n_cols = {ctm_A.n_cols}")
     ct_prod = openfhe_matrix.EvalMatMulSquare(
-        cc, keys, ctm_A.ctx, ctm_B.ctx, ctm_A.row_size
+        cc, keys, ctm_A.ctx, ctm_B.ctx, ctm_A.n_cols
     )
-    # TODO: fixed this
-    a, b, c, d, e, f, g, h, i = ctm_A.copy_info()
-    ctm_prod = FHEMatrix(a, b, c, d, e, f, g, h, i)
+
+    ctm_prod = FHEMatrix(*ctm_A.copy_info())
     ctm_prod.ctx = ct_prod
 
     return ctm_prod
@@ -377,14 +390,13 @@ def pack_vec_col_wise(v, block_size, num_slots):
 
 
 # convert a vector of an packed_rw_mat to its original matrix
-def to_matrix(vec, row_size):
+def to_matrix(vec, total_slots, row_size):
     n_slots = len(vec)
-
     row = []
     mat = []
     for k in range(n_slots):
         row.append(vec[k])
-        if (k + 1) % row_size == 0 and k > 1:
+        if (k + 1) % row_size == 0 and k >= 1:
             mat.append(row)
             row = []
     return mat
