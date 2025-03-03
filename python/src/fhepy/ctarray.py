@@ -210,10 +210,12 @@ def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size):
         return None
 
 
-def matrix_power(ctm_mat):
+def matrix_power(cc: CC, keys: KP, k: int, ctm_A: CTArray):
     """Raise a square matrix to the (integer) power n."""
-    # (a^2) - (a^4) - (a^8)
-    return None
+    # todo power and squaring
+    for i in range(k):
+        res = matmul_square(cc, keys, ctm_A, ctm_A)
+    return res
 
 
 def matrix_transpose(ctm_mat):
