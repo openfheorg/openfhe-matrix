@@ -1,7 +1,5 @@
 import os
-import sys
 import numpy as np
-import copy
 import math
 from typing import Tuple
 
@@ -12,7 +10,7 @@ import openfhe_matrix
 # import config and auxilarries files
 from fhepy.config import *
 from fhepy.matlib import *
-from fhepy.array import *
+import fhepy.utils as utils
 
 
 # Case 1. 1 matrix = 1 ct
@@ -37,7 +35,6 @@ class CTArray:
         self.codec = codec
 
     def get_info(self):
-        print(self.is_matrix)
         return [
             None,
             self.shape,
@@ -58,22 +55,18 @@ class CTArray:
         )
 
     def decrypt(self, cc, sk, precision=PRECISION_DEFAULT):
-        print("Hello ")
         info = self.get_info()
-        print(type(info))
-        print(info[0])
         result = cc.Decrypt(self.data, sk)
         result.SetLength(self.nums_slots)
         result.GetFormattedValues(precision)
         result = result.GetRealPackedValue()
         n_rows, n_cols = self.shape
         if self.is_matrix == 1:
-            result = to_matrix(result, n_rows * n_cols, self.n_cols)
-            print(result)
-            result = [
-                [round(result[i][j], precision) for j in range(n_rows)]
-                for i in range(n_cols)
-            ]
+            result = utils.reshape(result, n_rows * n_cols, self.n_cols)
+            # result = [
+            #     [round(result[i][j], precision) for j in range(n_rows)]
+            #     for i in range(n_cols)
+            # ]
         return result
 
 
@@ -92,7 +85,7 @@ def array(
     block_size = row_size, number of repetitions, number of columns
     block_size is important for packing vectors
     """
-    org_rows, org_cols, is_matrix = get_shape(data)
+    org_rows, org_cols, is_matrix = utils.get_shape(data)
 
     if is_matrix:
         n_cols = next_power2(org_cols)
@@ -118,90 +111,6 @@ def array(
     )
 
 
-def get_shape(data):
-    """
-    Get dimension of a matrix
-
-    Parameters:
-    ----------
-    data : list or np.ndarray
-
-    Returns
-    -------
-    rows, cols, is_matrix
-    """
-    # print("data: ", data)
-    if isinstance(data, list) or isinstance(data, tuple):
-        rows = len(data)
-        if isinstance(data[0], list) or isinstance(data[0], tuple):
-            cols = len(data[0])
-        else:
-            cols = 1
-        is_matrix = 1 if cols > 1 else 0
-        return rows, cols, is_matrix
-
-    if isinstance(data, np.ndarray):
-        if data.ndim == 1:
-            return data.shape[0], 0, 0
-        return data.shape[0], data.shape[1], 1
-
-    print("ERRORS: Wrong parameters!!!")
-    return None
-
-
-# Check the name convention
-def encode_matrix(
-    cc: CC,
-    data: list,
-    num_slots: int,
-    row_size: int = 1,
-    type: int = CodecType.ROW_WISE,
-) -> PT:
-    """Encode a matrix or data without padding or replicate"""
-
-    if type == CodecType.ROW_WISE:
-        packed_data = pack_mat_row_wise(data, row_size, num_slots)
-    elif type == CodecType.COL_WISE:
-        packed_data = pack_mat_col_wise(data, row_size, num_slots)
-    else:
-        # TODO Encoded Diagonal Matrix
-        packed_data = [0]
-
-    print("DEBUG[encode_matrix] ", packed_data)
-
-    return cc.MakeCKKSPackedPlaintext(packed_data)
-
-
-def encode_vector(
-    cc: CC,
-    data: list,
-    num_slots: int,
-    row_size: int = 1,
-    type: int = CodecType.ROW_WISE,
-) -> PT:
-    """Encode a vector with n replication"""
-
-    if row_size < 1:
-        sys.exit("ERROR: Number of repetitions should be larger than 0")
-
-    if row_size == 1 and type == CodecType.ROW_WISE:
-        sys.exit("ERROR: Can't encode a vector row-wise with 0 repetitions")
-
-    if not is_power2(row_size):
-        sys.exit(
-            "ERROR: The number of repetitions in vector packing should be a power of two"
-        )
-
-    if type == CodecType.ROW_WISE:
-        packed_data = pack_vec_row_wise(data, row_size, num_slots)
-    elif type == CodecType.COL_WISE:
-        packed_data = pack_vec_col_wise(data, row_size, num_slots)
-    else:
-        packed_data = [0]
-
-    return cc.MakeCKKSPackedPlaintext(packed_data)
-
-
 def decrypt(cc, sk, data, nums_slots, precision=3):
     result = cc.Decrypt(data, sk)
     result.SetLength(nums_slots)
@@ -223,6 +132,9 @@ def gen_rotation_keys(cc, sk, rotation_indices):
     cc.EvalRotateKeyGen(sk, rotation_indices)
 
 
+#########################################
+# Matrix Operations
+#########################################
 def matmul_square(cc: CC, keys: KP, ctm_A: CTArray, ctm_B: CTArray):
     """P
     Matrix product of two array
@@ -243,17 +155,15 @@ def matmul_square(cc: CC, keys: KP, ctm_A: CTArray, ctm_B: CTArray):
     )
 
     # ctm_prod = array(*ctm_A.get())
-    array_info = ctm_A.get_info
-    array_info[0] = ct_prod
-    ctm_prod = CTArray(*array_info)
-
-    return ctm_prod
+    info = ctm_A.get_info()
+    info[0] = ct_prod
+    return CTArray(*info)
 
 
-def matvec(cc, keys, sum_col_keys, type, block_size, ctm_v, ctm_mat):
+def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size, type):
     """Matrix-vector dot product of two arrays."""
     ct_prod = openfhe_matrix.EvalMultMatVec(
-        cc, keys, sum_col_keys, type, block_size, ctm_v.data, ctm_mat.data
+        cc, keys, sum_col_keys, type, block_size, ctv_v.data, ctm_mat.data
     )
     # parse an option to repack
     # 1. RM <-> CM
@@ -297,9 +207,9 @@ def matrix_transpose(ctm_mat):
 # dot (v,w) = <v,w>
 
 
-def dot(cc, keys, cta_A, cta_B):
-    if not cta_A.is_matrix and not cta_B.is_matrix:
-        return multiply(cc, keys, cta_A, cta_B)
+def dot(cc, keys, ctm_A, ctm_B):
+    if not ctm_A.is_matrix and not ctm_B.is_matrix:
+        return multiply(cc, keys, ctm_A, ctm_B)
 
     # TODO: add dot product for vectors
 
@@ -307,23 +217,24 @@ def dot(cc, keys, cta_A, cta_B):
 
 
 # Hadamard product: multiply arguments element-wise.
-def multiply(cc, keys, cta_A, cta_B):
-    cta_hadamard = cta_A.copy(0)
-    cta_hadamard.data = cc.EvalMult(cta_A.data, cta_B.data)
-    return cta_hadamard
+def multiply(cc, keys, ctm_A, ctm_B):
+    ctm_hadamard = ctm_A.copy(0)
+    ctm_hadamard.data = cc.EvalMult(ctm_A.data, ctm_B.data)
+    return ctm_hadamard
 
 
-def add(cc, cta_A, cta_B):
+def add(cc, ctm_A, ctm_B):
     # Add arguments element-wise.
-    info = cta_A.get_info()
-    info[0] = cc.EvalAdd(cta_A.data, cta_B.data)
-    cta = CTArray(*info)
-    return cta
+    info = ctm_A.get_info()
+    info[0] = cc.EvalAdd(ctm_A.data, ctm_B.data)
+    return CTArray(*info)
 
 
 def sub(cc, keys, ctm_A, ctm_B):
     # Subtracts arguments element-wise.
-    return cc.EvalSub(ctm_A.data, ctm_B.data)
+    info = ctm_A.get_info()
+    info[0] = cc.EvalSub(ctm_A.data, ctm_B.data)
+    return CTArray(*info)
 
 
 def sum(cc, data, axis=None):

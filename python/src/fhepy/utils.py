@@ -9,6 +9,37 @@ def get_dims(data):
     return data.shape[0], data.shape[1]
 
 
+def get_shape(data):
+    """
+    Get dimension of a matrix
+
+    Parameters:
+    ----------
+    data : list or np.ndarray
+
+    Returns
+    -------
+    rows, cols, is_matrix
+    """
+    # print("data: ", data)
+    if isinstance(data, list) or isinstance(data, tuple):
+        rows = len(data)
+        if isinstance(data[0], list) or isinstance(data[0], tuple):
+            cols = len(data[0])
+        else:
+            cols = 1
+        is_matrix = 1 if cols > 1 else 0
+        return rows, cols, is_matrix
+
+    if isinstance(data, np.ndarray):
+        if data.ndim == 1:
+            return data.shape[0], 0, 0
+        return data.shape[0], data.shape[1], 1
+
+    print("ERRORS: Wrong parameters!!!")
+    return None
+
+
 def rotate(vec, k):
     n = len(vec)
     rot = [0] * n
@@ -88,7 +119,7 @@ def pack_vec_col_wise(v, block_size, num_slots):
 
 
 # convert a vector of an packed_rw_mat to its original matrix
-def to_matrix(vec, total_slots, row_size):
+def reshape(vec, total_slots, row_size):
     n_slots = len(vec)
     row = []
     mat = []
