@@ -60,10 +60,10 @@ def ravel_mat(
     order: int = CodecType.ROW_WISE,
 ) -> PT:
     """Encode a matrix or data without padding or replicate"""
-
-    if type == CodecType.ROW_WISE:
+    print(order)
+    if order == CodecType.ROW_WISE:
         packed_data = utils.pack_mat_row_wise(data, row_size, num_slots)
-    elif type == CodecType.COL_WISE:
+    elif order == CodecType.COL_WISE:
         packed_data = utils.pack_mat_col_wise(data, row_size, num_slots)
     else:
         # TODO Encoded Diagonal Matrix
@@ -86,7 +86,7 @@ def ravel_vec(
     if row_size < 1:
         sys.exit("ERROR: Number of repetitions should be larger than 0")
 
-    if row_size == 1 and type == CodecType.ROW_WISE:
+    if row_size == 1 and order == CodecType.ROW_WISE:
         sys.exit("ERROR: Can't encode a vector row-wise with 0 repetitions")
 
     if not is_power2(row_size):
@@ -94,11 +94,13 @@ def ravel_vec(
             "ERROR: The number of repetitions in vector packing should be a power of two"
         )
 
-    if type == CodecType.ROW_WISE:
+    if order == CodecType.ROW_WISE:
         packed_data = utils.pack_vec_row_wise(data, row_size, num_slots)
-    elif type == CodecType.COL_WISE:
+    elif order == CodecType.COL_WISE:
         packed_data = utils.pack_vec_col_wise(data, row_size, num_slots)
     else:
         packed_data = [0]
+
+    print("DEBUG[encode_vector] ", packed_data)
 
     return cc.MakeCKKSPackedPlaintext(packed_data)

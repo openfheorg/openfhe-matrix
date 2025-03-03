@@ -5,6 +5,7 @@ from openfhe_matrix import *
 
 # import fhepy library
 import fhepy as fp
+from fhepy.utils import *
 
 
 def gen_crypto_context(ringDimension, row_size, mult_depth):
@@ -72,20 +73,26 @@ def demo():
     print(f"Matching = [{np.array_equal(result, a @ b)}] \n{result}")
 
     print("\nMatrix Vector multiplication: A@c")
-    print("Result = ", a @ c)
+    vec_ac = pack_vec_row_wise((a @ c), block_size, total_slots)
+    print("Result = ", vec_ac)
     sum_col_keys = fp.gen_sum_col_keys(cc, keys.secretKey, block_size)
     ct_prod = fp.matvec(cc, keys, sum_col_keys, ctm_a, ctv_c, block_size)
     result = ct_prod.decrypt(cc, keys.secretKey)
     result = np.round(result, decimals=1)
-    print(f"Matching = [{np.array_equal(result, a @ c)}] \n{result}")
+    print(f"Matching = [{np.array_equal(result, vec_ac)}] \n{result}")
 
     # # %%
-    # print("\nDot product c.d:")
-    # print(np.dot(c, d))
+    print("\nDot product c.d:")
+    aut_result = np.dot(c, d)
+    sum_col_keys = fp.gen_sum_col_keys(cc, keys.secretKey, block_size)
+    ct_prod = fp.dot(cc, keys, sum_col_keys, ctv_c, ctv_d)
+    result = ct_prod.decrypt(cc, keys.secretKey)
+    result = np.round(result, decimals=1)
+    print(f"Matching = [{np.array_equal(result[0], aut_result)}] \n{result}")
 
     # %%
-    print("\nHadamard Product: a.b:")
-    print(np.multiply(a, b))
+    # print("\nHadamard Product: a.b:")
+    # print(np.multiply(a, b))
 
     # # %%
     # print("\nCreate matrix:")

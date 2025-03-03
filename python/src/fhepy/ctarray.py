@@ -165,6 +165,7 @@ def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size):
     """Matrix-vector dot product of two arrays."""
     print(ctm_mat.codec, ctv_v.codec)
     if ctm_mat.codec == "R" and ctv_v.codec == "C":
+        print("CRC")
         ct_prod = openfhe_matrix.EvalMultMatVec(
             cc,
             keys,
@@ -179,6 +180,7 @@ def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size):
         return CTArray(*info)
 
     elif ctm_mat.codec == "C" and ctv_v.codec == "R":
+        print("RCR")
         ct_prod = openfhe_matrix.EvalMultMatVec(
             cc,
             keys,
@@ -239,13 +241,17 @@ def matrix_transpose(ctm_mat):
 # dot (v,w) = <v,w>
 
 
-def dot(cc, keys, ctm_A, ctm_B):
+def dot(cc, keys, sum_col_keys, ctm_A, ctm_B):
+    # TODO: check if the dimension is matching
     if not ctm_A.is_matrix and not ctm_B.is_matrix:
+        ct_mult = cc.EvalMult(ctm_A.data, ctm_B.data)
+        ct_prod = cc.EvalSumCols(ct_mult, ctm_A.n_cols, sum_col_keys)
+        rows, cols = ctm_A.shape
+        info = ctm_A.get_info()
+        info[0] = ct_prod
+        return CTArray(*info)
+    else:
         return multiply(cc, keys, ctm_A, ctm_B)
-
-    # TODO: add dot product for vectors
-
-    return None
 
 
 # Hadamard product: multiply arguments element-wise.
