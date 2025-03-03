@@ -1,5 +1,6 @@
 import sys
 import numpy as np
+from fhepy.matlib import *
 
 
 def get_dims(data):
@@ -24,8 +25,10 @@ def pack_vec_row_wise(v, block_size, num_slots):
     3
     """
     n = len(v)
+    assert is_power2(block_size)
+    assert is_power2(num_slots)
     if num_slots < n:
-        sys.exit("ERROR ::: [row_wise_vector] vector is longer than total slots")
+        sys.exit("ERROR ::: [row_wise_vector] vector is longer than total   slots")
     if num_slots == n:
         if num_slots // block_size > 1:
             sys.exit(
@@ -33,7 +36,7 @@ def pack_vec_row_wise(v, block_size, num_slots):
             )
         return v
 
-    # print info
+    # print data
     assert num_slots % block_size == 0
     total_blocks = num_slots // block_size
     free_slots = num_slots - n * block_size
@@ -45,7 +48,7 @@ def pack_vec_row_wise(v, block_size, num_slots):
         for j in range(block_size):
             packed[k] = v[i]
             k += 1
-    return packed, total_blocks, free_slots
+    return packed
 
 
 def pack_vec_col_wise(v, block_size, num_slots):
@@ -56,18 +59,20 @@ def pack_vec_col_wise(v, block_size, num_slots):
     3
     """
     n = len(v)
+    assert is_power2(block_size)
+    assert is_power2(num_slots)
     if block_size < n:
         sys.exit(
-            f"ERROR ::: [col_wise_vector] vector ({n}) is longer than size of a slot ({block_size})"
+            f"ERROR ::: [col_wise_vector] vector of size ({n}) is longer than size of a slot ({block_size})"
         )
     if num_slots < n:
-        sys.exit(f"ERROR ::: [col_wise_vector] vector is longer than total slots")
+        sys.exit("ERROR ::: [col_wise_vector] vector is longer than total slots")
     if num_slots == n:
         return v
 
     packed = np.zeros(num_slots)
 
-    # print info
+    # print data
     assert num_slots % block_size == 0
     total_blocks = num_slots // block_size
     free_slots = num_slots - n * total_blocks
@@ -79,18 +84,17 @@ def pack_vec_col_wise(v, block_size, num_slots):
             k += 1
         k += block_size - n
 
-    return packed, total_blocks, free_slots
+    return packed
 
 
 # convert a vector of an packed_rw_mat to its original matrix
-def matrix(vec, row_size):
+def to_matrix(vec, total_slots, row_size):
     n_slots = len(vec)
-
     row = []
     mat = []
     for k in range(n_slots):
         row.append(vec[k])
-        if (k + 1) % row_size == 0 and k > 1:
+        if (k + 1) % row_size == 0 and k >= 1:
             mat.append(row)
             row = []
     return mat
@@ -139,6 +143,8 @@ def pack_mat_row_wise(matrix, block_size, num_slots, debug=0):
     [4 5 6]
     [7 8 9]]
     """
+    assert is_power2(block_size)
+    assert is_power2(num_slots)
     assert num_slots % block_size == 0
     n = len(matrix)
     m = len(matrix[0])
@@ -172,16 +178,18 @@ def pack_mat_row_wise(matrix, block_size, num_slots, debug=0):
         for j in range(m, block_size):
             packed[k] = 0
             k += 1
-    return packed, total_blocks, free_slots
+    return packed
 
 
 def pack_mat_col_wise(matrix, block_size, num_slots, verbose=0):
     """
     Packing Matric M using row-wise
     [[1 2 3] -> [1 4 7 0 2 5 8 0 3 6 9 0]
-        [4 5 6]
-        [7 8 9]]
+     [4 5 6]
+     [7 8 9]]
     """
+    assert is_power2(block_size)
+    assert is_power2(num_slots)
     assert num_slots % block_size == 0
     cols = len(matrix)
     rows = len(matrix[0])
@@ -214,4 +222,4 @@ def pack_mat_col_wise(matrix, block_size, num_slots, verbose=0):
                 packed[k] = matrix[row][col]
             k = k + 1
 
-    return packed, total_blocks, free_slots
+    return packed

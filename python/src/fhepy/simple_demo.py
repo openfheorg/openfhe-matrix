@@ -53,29 +53,24 @@ def demo():
     print("c: ", c)
     print("d: ", d)
 
-    ctm_a = fp.array(cc, keys.publicKey, a, total_slots)
-    ctm_b = fp.array(cc, keys.publicKey, b, total_slots)
+    ctm_a = fp.CTArray(cc, keys.publicKey, a, total_slots)
+    ctm_b = fp.CTArray(cc, keys.publicKey, b, total_slots)
 
-    ctm_c = fp.array(cc, keys.publicKey, c, total_slots, block_size)
-    ctm_d = fp.array(cc, keys.publicKey, d, total_slots, block_size)
+    ctm_c = fp.CTArray(cc, keys.publicKey, c, total_slots, block_size)
+    ctm_d = fp.CTArray.array(cc, keys.publicKey, d, total_slots, block_size)
 
-    print("Matrix addition:")
-    ct_sum = fp.add(cc, ctm_a, ctm_b)
-    result = ct_sum.decrypt(cc, keys.secretKey)
+    print("Matrix multiplication:")
+    ct_prod = fp.mms_mult(cc, keys, ctm_a, ctm_b)
+    result = ct_prod.decrypt(cc, keys.secretKey)
     print(result)
 
-    # print("Matrix multiplication:")
-    # ct_prod = fp.mms_mult(cc, keys, ctm_a, ctm_b)
-    # result = ct_prod.decrypt(cc, keys.secretKey)
-    # print(result)
+    print("Matrix Vector multiplication: A@c")
 
-    # print("Matrix Vector multiplication: A@c")
+    sum_col_keys = fp.gen_sum_col_keys(cc, keys.secretKey, block_size)
 
-    # sum_col_keys = fp.gen_sum_col_keys(cc, keys.secretKey, block_size)
-
-    # ct_prod = fp.matvec(cc, keys, sum_col_keys, fp.MM_CRC, block_size, ctm_c, ctm_a)
-    # result = fp.decrypt(cc, keys.secretKey, ct_prod, block_size, 1)
-    # print(result)
+    ct_prod = fp.matvec(cc, keys, sum_col_keys, fp.MM_CRC, block_size, ctm_c, ctm_a)
+    result = fp.decrypt(cc, keys.secretKey, ct_prod, block_size, 1)
+    print(result)
 
     # # %%
     # print("\nDot product c.d:")

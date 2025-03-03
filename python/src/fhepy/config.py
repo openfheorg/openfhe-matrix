@@ -1,8 +1,6 @@
 import openfhe
 from enum import Enum
 
-# CT = openfhe.Ciphertext
-# CC = openfhe.CryptoContext
 
 PT = openfhe.Plaintext
 CT = openfhe.Ciphertext
@@ -10,7 +8,7 @@ CC = openfhe.CryptoContext
 KP = openfhe.KeyPair
 
 
-class EncodeStyles(Enum):
+class CodecType(Enum):
     ROW_WISE = 0
     COL_WISE = 1
     DIAG_WISE = 2
@@ -23,3 +21,6 @@ class PackStyles(Enum):
     MM_RCR = 1
     # pack matrix diagonal
     MM_DIAG = 2
+
+
+PRECISION_DEFAULT = 1

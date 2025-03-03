@@ -1,2 +1,2 @@
-from .CTArray import CTArray
-from .PTArray import PTArray
+from .CTArray import *
+from .PTArray import *
