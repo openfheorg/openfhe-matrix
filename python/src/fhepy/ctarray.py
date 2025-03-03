@@ -25,7 +25,7 @@ class CTArray:
         is_matrix: bool,
         nums_slots: int,
         n_cols: int = 1,  # block_size
-        codec: int = CodecType.ROW_WISE,
+        order: int = CodecType.ROW_WISE,
     ):
         self.data = data
         self.shape = shape
@@ -33,7 +33,7 @@ class CTArray:
         self.n_cols = n_cols  # padded cols
         self.n_rows = nums_slots // n_cols
         self.nums_slots = nums_slots
-        self.codec = codec
+        self.order = order
 
     def get_info(self):
         return [
@@ -42,7 +42,7 @@ class CTArray:
             self.is_matrix,
             self.nums_slots,
             self.n_cols,
-            self.codec,
+            self.order,
         ]
 
     def copy(self, is_deep_copy: bool = 1):
@@ -52,7 +52,7 @@ class CTArray:
             self.is_matrix,
             self.nums_slots,
             self.n_cols,
-            self.codec,
+            self.order,
         )
 
     def decrypt(self, cc, sk, precision=PRECISION_DEFAULT):
@@ -69,6 +69,18 @@ class CTArray:
             #     for i in range(n_cols)
             # ]
         return result
+
+    def ravel(self, cc, keys, rot_keys, order):
+        # todo this function use to perform linear transformation. I will do it later
+        if self.order == "R":
+            if order == "C":
+                print("...change order from RW to CW")
+
+        if self.order == "C":
+            if order == "R":
+                print("...change order from CW to RW")
+
+        return
 
 
 #########################################
@@ -163,8 +175,8 @@ def matmul_square(cc: CC, keys: KP, ctm_A: CTArray, ctm_B: CTArray):
 
 def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size):
     """Matrix-vector dot product of two arrays."""
-    print(ctm_mat.codec, ctv_v.codec)
-    if ctm_mat.codec == "R" and ctv_v.codec == "C":
+    print(ctm_mat.order, ctv_v.order)
+    if ctm_mat.order == "R" and ctv_v.order == "C":
         print("CRC")
         ct_prod = openfhe_matrix.EvalMultMatVec(
             cc,
@@ -179,7 +191,7 @@ def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size):
         info = [ct_prod, (rows, 1), False, ctm_mat.nums_slots, cols, "C"]
         return CTArray(*info)
 
-    elif ctm_mat.codec == "C" and ctv_v.codec == "R":
+    elif ctm_mat.order == "C" and ctv_v.order == "R":
         print("RCR")
         ct_prod = openfhe_matrix.EvalMultMatVec(
             cc,
@@ -196,31 +208,6 @@ def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size):
     else:
         print("ERROR [matvec] encoding styles are not matching!!!")
         return None
-
-    # info = ctv_v.get_info()
-    # info[0] = ct_prod
-    # return CTArray(*info)
-    # parse an option to repack
-    # 1. RM <-> CM
-    # (4 x 2) (2x1)
-
-    # org_vector : 12
-
-    # 1 1 1 1
-    # 2 2 2 2
-
-    # RM: 11112222
-
-    # 1111111122222222
-
-    # CM: 12121212
-
-    # Default: 12 - > 11 22 -> 1111 22222
-
-    # ctm_prod = CTArray(*ctm_v.copy_data())
-    # ctm_prod.data = ct_prod
-    # TODO: construct a CTArray after receiving a product
-    # TODO: data replications
 
 
 def matrix_power(ctm_mat):
@@ -256,9 +243,9 @@ def dot(cc, keys, sum_col_keys, ctm_A, ctm_B):
 
 # Hadamard product: multiply arguments element-wise.
 def multiply(cc, keys, ctm_A, ctm_B):
-    ctm_hadamard = ctm_A.copy(0)
-    ctm_hadamard.data = cc.EvalMult(ctm_A.data, ctm_B.data)
-    return ctm_hadamard
+    info = ctm_A.get_info()
+    info[0] = cc.EvalMult(ctm_A.data, ctm_B.data)
+    return CTArray(*info)
 
 
 def add(cc, ctm_A, ctm_B):
@@ -275,28 +262,50 @@ def sub(cc, keys, ctm_A, ctm_B):
     return CTArray(*info)
 
 
-def sum(cc, data, axis=None):
+def sum(cc, sum_keys, cta, axis=None):
     """Sum of array elements over a given axis"""
-    # todo: should we let user uses secretKey or regenerate
-    # cc = data.context
-    # keys = data.keys
-
-    # if axis == None:
-    #     return cc.EvalSum(data.data)
-
-    # if ct_a.is_matrix:
-    #     if ct_a.encode_style == ROW_WISE:
-    #         cc.EvalRotateKeyGen(keys.secretKey, [1, -2])
+    # axis = None: sum everything
+    # axis = 0: sum all rows
+    # axis = 1: sum all cols
+    rows_key, cols_key = sum_keys
+    info = cta.get_info()
+    if cta.order == "R":
+        if axis == 1:
+            info[0] = cc.EvalSumCols(cta, cta.n_cols, cols_key)
+            info.n_cols = 1
+        elif axis == 0:
+            info[0] = cc.EvalSumRows(cta, cta.n_cols, rows_key)
+            info.n_rows = 1
+        else:
+            info[0] = cc.EvalSumCols(cta, cta.n_cols, cols_key)
+            info[0] = cc.EvalSumRows(info[0], info[0].n_cols, rows_key)
+            info.n_rows = 1
+            info.n_cols = 1
+        return CTArray(*info)
+    else:
+        # remark: for different encoding, need to repack it or find a better way to do the sum
+        return None
 
     return None
 
 
-def mean(data_a):
+def mean(cc, sum_keys, cta, axis=None):
     """Compute the arithmetic mean along the specified axis."""
-    # ssum = sum(data_a)
+    total = sum(cc, sum_keys, cta, axis)
+    if axis == 0:
+        n = cta.n_rows
+    elif axis == 1:
+        n = cta.n_cols
+    total.data = cc.EvalMul(total.data, n)
+    return total
 
-    # return ssum / data_a.nums_slots
-    return None
+
+# def cumsum(cc, sum_keys, cta, axis=None):
+#     return
+
+
+# def reduce(cc, sum_keys, cta, axis=None):
+#     return
 
 
 # #####################################################

@@ -9,6 +9,8 @@ def get_dims(data):
     return data.shape[0], data.shape[1]
 
 
+def linear_transformation(cc, keys, U):
+
 def get_shape(data):
     """
     Get dimension of a matrix
@@ -117,6 +119,18 @@ def pack_vec_col_wise(v, block_size, num_slots):
 
     return packed
 
+
+# convert a vector of an packed_rw_mat to its original matrix
+def reshape(vec, total_slots, row_size):
+    n_slots = len(vec)
+    row = []
+    mat = []
+    for k in range(n_slots):
+        row.append(vec[k])
+        if (k + 1) % row_size == 0 and k >= 1:
+            mat.append(row)
+            row = []
+    return mat
 
 # convert a vector of an packed_rw_mat to its original matrix
 def reshape(vec, total_slots, row_size):
