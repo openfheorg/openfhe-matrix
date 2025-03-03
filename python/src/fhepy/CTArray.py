@@ -9,65 +9,35 @@ from typing import Tuple
 import openfhe
 import openfhe_matrix
 
-# import utils libraries
-from config import *
-
-# from config import EncodeStyles
-# from utils_math import Math
-
-PT = openfhe.Plaintext
-CT = openfhe.Ciphertext
-CC = openfhe.CryptoContext
-KP = openfhe.KeyPair
-
-ROW_WISE = 0
-COL_WISE = 1
-DIAG_WISE = 2
-
-# pack matrix row-wise and vector column-wise, result is column-wise
-MM_CRC = 0
-# pack matrix column-wise and vector row-wise, result i row-wise
-MM_RCR = 1
-# pack matrix diagonal
-MM_DIAG = 2
+# import config and helpter
+from fhepy.config import *
 
 
-# Note:
-# - Build class PTMatrix:
-# - Maybe work with raw np.array
-
-# class PTMatrix:
-# Maybe work with raw np.array
+# TODO: Build class PTMatrix to work with raw np.array
+class PTArray:
+    def __init__():
+        return
 
 
-# Implementation for Case 1
-# ? Should we only use public key or both
-# ? Generate all possible rotation keys in advanced?
-# we can get crypto context from ciphertext dont' need to input
-# gen_rotation keys: serialize keys seperate the function and let someone use that (us or user)
-
+# NOTE: gen_rotation keys: serialize keys separate the function and let someone use that (us or user)
 # Case 1. 1 matrix = 1 ct
-# Case 2. 1 big matrix = multiples ct
-# Case 3. multiple small matrices = 1 ct
-# Maybe: class extension (later)
-
-
-class FHEMatrix:  # CTMatrix
+class CTArray:
     def __init__(
         self,
         ctx: CT,
-        shape: Tuple[int, int],  # original dimensions. shape = (n_rows,n_cols)
+        shape: Tuple[
+            int, int
+        ],  # original dimensions. shape = (n_rows,n_cols) before padding
         is_matrix: bool,
         nums_slots: int,
         n_cols: int = 1,  # block_size
-        type: int = ROW_WISE,
+        type: int = EncodeStyles.ROW_WISE,
     ):
         self.ctx = ctx
         self.shape = shape
         self.is_matrix = is_matrix  # plaintext matrix
-        self.n_cols = n_cols
-        self.nums_slots = nums_slots  # remove it
-        self.n_rows = nums_slots // n_cols  # change name to n_rows
+        self.n_cols = n_cols  # padded cols
+        self.n_rows = nums_slots // n_cols
         self.encoding_styles = type
 
     def copy_info(self):
@@ -88,16 +58,13 @@ class FHEMatrix:  # CTMatrix
         data: list,
         nums_slots: int,
         block_size: int = 1,
-        type: int = ROW_WISE,
+        type: int = EncodeStyles.ROW_WISE,
     ):
         """
         block_size = row_size, number of repetitions, number of columns
         block_size is important for packing vectors
         """
         org_rows, org_cols, is_matrix = get_shape(data)
-
-        # print("encoding style =  ", type)
-        # print("----> ", org_rows, org_cols, is_matrix)
 
         if is_matrix:
             n_cols = next_power2(org_cols)
@@ -174,20 +141,22 @@ def get_shape(data):
     return None
 
 
+# Check the name convention
 def _encode_matrix(
     cc: CC,
     data: list,
     num_slots: int,
     row_size: int = 1,
-    type: int = ROW_WISE,
+    type: int = EncodeStyles.ROW_WISE,
 ) -> PT:
     """Encode a matrix or data without padding or replicate"""
 
-    if type == ROW_WISE:
+    if type == EncodeStyles.ROW_WISE:
         packed_data = pack_mat_row_wise(data, row_size, num_slots)
-    elif type == COL_WISE:
+    elif type == EncodeStyles.COL_WISE:
         packed_data = pack_mat_col_wise(data, row_size, num_slots)
     else:
+        # TODO Encoded Diagonal Matrix
         packed_data = [0]
 
     print("DEBUG[_encode_matrix] ", packed_data)
@@ -200,14 +169,14 @@ def _encode_vector(
     data: list,
     num_slots: int,
     row_size: int = 1,
-    type: int = ROW_WISE,
+    type: int = EncodeStyles.ROW_WISE,
 ) -> PT:
     """Encode a vector with n replication"""
 
     if row_size < 1:
         sys.exit("ERROR: Number of repetitions should be larger than 0")
 
-    if row_size == 1 and type == ROW_WISE:
+    if row_size == 1 and type == EncodeStyles.ROW_WISE:
         sys.exit("ERROR: Can't encode a vector row-wise with 0 repetitions")
 
     if not is_power2(row_size):
@@ -215,9 +184,9 @@ def _encode_vector(
             "ERROR: The number of repetitions in vector packing should be a power of two"
         )
 
-    if type == ROW_WISE:
+    if type == EncodeStyles.ROW_WISE:
         packed_data = pack_vec_row_wise(data, row_size, num_slots)
-    elif type == COL_WISE:
+    elif type == EncodeStyles.COL_WISE:
         packed_data = pack_vec_col_wise(data, row_size, num_slots)
     else:
         packed_data = [0]
@@ -251,43 +220,65 @@ def gen_rotation_keys(cc, sk, rotation_indices):
     cc.EvalRotateKeyGen(sk, rotation_indices)
 
 
-def mms_mult(cc, keys, ctm_A: FHEMatrix, ctm_B: FHEMatrix):
+# def matmul
+
+
+def mms_mult(cc, keys, ctm_A: CTArray, ctm_B: CTArray):
     """
     Matrix product of two array
 
     Parameters
     ----------
-    ctm_A: FHEMatrix
-    ctm_B: FHEMatrix
+    ctm_A: CTArray
+    ctm_B: CTArray
 
     Returns
     -------
-    FHEMatrix
+    CTArray
         Product of two square matrices
     """
     ct_prod = openfhe_matrix.EvalMatMulSquare(
         cc, keys, ctm_A.ctx, ctm_B.ctx, ctm_A.n_cols
     )
 
-    ctm_prod = FHEMatrix(*ctm_A.copy_info())
+    ctm_prod = CTArray(*ctm_A.copy_info())
     ctm_prod.ctx = ct_prod
 
     return ctm_prod
 
 
-def mv_mult(cc, keys, sum_col_keys, type, block_size, ctm_v, ctm_mat):
+def matvec(cc, keys, sum_col_keys, type, block_size, ctm_v, ctm_mat):
     """Matrix-vector dot product of two arrays."""
     ct_prod = openfhe_matrix.EvalMultMatVec(
         cc, keys, sum_col_keys, type, block_size, ctm_v.ctx, ctm_mat.ctx
     )
-    # ctm_prod = FHEMatrix(*ctm_v.copy_info())
+    # parse an option to repack
+    # 1. RM <-> CM
+    # (4 x 2) (2x1)
+
+    # org_vector : 12
+
+    # 1 1 1 1
+    # 2 2 2 2
+
+    # RM: 11112222
+
+    # 1111111122222222
+
+    # CM: 12121212
+
+    # Default: 12 - > 11 22 -> 1111 22222
+
+    # ctm_prod = CTArray(*ctm_v.copy_info())
     # ctm_prod.ctx = ct_prod
-    # TODO: construct a FHEMatrix after receiving a product
+    # TODO: construct a CTArray after receiving a product
+    # TODO: ciphertext replications
     return ct_prod
 
 
 def matrix_power(ctm_mat):
     """Raise a square matrix to the (integer) power n."""
+    # (a^2) - (a^4) - (a^8)
     return None
 
 
@@ -299,9 +290,13 @@ def matrix_transpose(ctm_mat):
     return None
 
 
-def dot(cc, keys, ctm_A, ctm_B):
-    if not ctm_A.is_matrix and not ctm_B.is_matrix:
-        ct_product = cc.EvalMult(ctm_A.ctx, ctm_B.ctx)
+# dot(A.B) = A@B
+# dot (v,w) = <v,w>
+
+
+def dot(cc, keys, ctv_A, ctv_B):
+    if not ctv_A.is_matrix and not ctv_B.is_matrix:
+        ct_product = cc.EvalMult(ctv_A.ctx, ctv_B.ctx)
 
     return None
 
