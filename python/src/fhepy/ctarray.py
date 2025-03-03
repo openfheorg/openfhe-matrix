@@ -11,6 +11,7 @@ import openfhe_matrix
 from fhepy.config import *
 from fhepy.matlib import *
 import fhepy.utils as utils
+from fhepy.ptarray import ravel_mat, ravel_vec
 
 
 # Case 1. 1 matrix = 1 ct
@@ -73,6 +74,8 @@ class CTArray:
 #########################################
 # Public Methods
 #########################################
+
+
 def array(
     cc,
     pk,
@@ -95,9 +98,9 @@ def array(
     n_rows = nums_slots // n_cols
 
     if is_matrix:
-        ptx = encode_matrix(cc, data, nums_slots, n_cols, type)
+        ptx = ravel_mat(cc, data, nums_slots, n_cols, type)
     else:
-        ptx = encode_vector(cc, data, nums_slots, n_cols, type)
+        ptx = ravel_vec(cc, data, nums_slots, n_cols, type)
 
     data = cc.Encrypt(pk, ptx)
 
@@ -153,18 +156,48 @@ def matmul_square(cc: CC, keys: KP, ctm_A: CTArray, ctm_B: CTArray):
     ct_prod = openfhe_matrix.EvalMatMulSquare(
         cc, keys, ctm_A.data, ctm_B.data, ctm_A.n_cols
     )
-
-    # ctm_prod = array(*ctm_A.get())
     info = ctm_A.get_info()
     info[0] = ct_prod
     return CTArray(*info)
 
 
-def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size, type):
+def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size):
     """Matrix-vector dot product of two arrays."""
-    ct_prod = openfhe_matrix.EvalMultMatVec(
-        cc, keys, sum_col_keys, type, block_size, ctv_v.data, ctm_mat.data
-    )
+    print(ctm_mat.codec, ctv_v.codec)
+    if ctm_mat.codec == "R" and ctv_v.codec == "C":
+        ct_prod = openfhe_matrix.EvalMultMatVec(
+            cc,
+            keys,
+            sum_col_keys,
+            PackStyles.MM_CRC,
+            block_size,
+            ctv_v.data,
+            ctm_mat.data,
+        )
+        rows, cols = ctm_mat.shape
+        info = [ct_prod, (rows, 1), False, ctm_mat.nums_slots, cols, "C"]
+        return CTArray(*info)
+
+    elif ctm_mat.codec == "C" and ctv_v.codec == "R":
+        ct_prod = openfhe_matrix.EvalMultMatVec(
+            cc,
+            keys,
+            sum_col_keys,
+            PackStyles.MM_RCR,
+            block_size,
+            ctv_v.data,
+            ctm_mat.data,
+        )
+        rows, cols = ctm_mat.shape
+        info = [ct_prod, (rows, 1), False, ctm_mat.nums_slots, cols, "R"]
+        return CTArray(*info)
+    else:
+        print("ERROR [matvec] encoding styles are not matching!!!")
+        return None
+
+    # info = ctv_v.get_info()
+    # info[0] = ct_prod
+    # return CTArray(*info)
     # parse an option to repack
     # 1. RM <-> CM
     # (4 x 2) (2x1)
@@ -186,7 +219,6 @@ def matvec(cc, keys, sum_col_keys, ctm_mat, ctv_v, block_size, type):
     # ctm_prod.data = ct_prod
     # TODO: construct a CTArray after receiving a product
     # TODO: data replications
-    return ct_prod
 
 
 def matrix_power(ctm_mat):

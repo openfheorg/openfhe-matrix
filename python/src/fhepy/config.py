@@ -8,13 +8,13 @@ CC = openfhe.CryptoContext
 KP = openfhe.KeyPair
 
 
-class CodecType(Enum):
+class CodecType:
     ROW_WISE = "R"
     COL_WISE = "C"
     DIAG_WISE = "D"
 
 
-class PackStyles(Enum):
+class PackStyles:
     # pack matrix row-wise and vector column-wise, result is column-wise
     MM_CRC = 0
     # pack matrix column-wise and vector row-wise, result i row-wise

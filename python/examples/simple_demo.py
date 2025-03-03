@@ -56,33 +56,35 @@ def demo():
     ctm_a = fp.array(cc, keys.publicKey, a, total_slots)
     ctm_b = fp.array(cc, keys.publicKey, b, total_slots)
 
-    ctm_c = fp.array(cc, keys.publicKey, c, total_slots, block_size)
-    ctm_d = fp.array(cc, keys.publicKey, d, total_slots, block_size)
+    ctv_c = fp.array(cc, keys.publicKey, c, total_slots, block_size, "C")
+    ctv_d = fp.array(cc, keys.publicKey, d, total_slots, block_size, "C")
 
-    print("Matrix addition:")
+    print("\nMatrix addition:")
     ct_sum = fp.add(cc, ctm_a, ctm_b)
     result = ct_sum.decrypt(cc, keys.secretKey)
-    print(result)
+    result = np.round(result, decimals=1)
+    print(f"Matching = [{np.array_equal(result, a + b)}] \n{result}")
 
-    # print("Matrix multiplication:")
-    # ct_prod = fp.mms_mult(cc, keys, ctm_a, ctm_b)
-    # result = ct_prod.decrypt(cc, keys.secretKey)
-    # print(result)
+    print("\nMatrix multiplication:")
+    ct_prod = fp.matmul_square(cc, keys, ctm_a, ctm_b)
+    result = ct_prod.decrypt(cc, keys.secretKey)
+    result = np.round(result, decimals=1)
+    print(f"Matching = [{np.array_equal(result, a @ b)}] \n{result}")
 
-    # print("Matrix Vector multiplication: A@c")
-
-    # sum_col_keys = fp.gen_sum_col_keys(cc, keys.secretKey, block_size)
-
-    # ct_prod = fp.matvec(cc, keys, sum_col_keys, fp.MM_CRC, block_size, ctm_c, ctm_a)
-    # result = fp.decrypt(cc, keys.secretKey, ct_prod, block_size, 1)
-    # print(result)
+    print("\nMatrix Vector multiplication: A@c")
+    print("Result = ", a @ c)
+    sum_col_keys = fp.gen_sum_col_keys(cc, keys.secretKey, block_size)
+    ct_prod = fp.matvec(cc, keys, sum_col_keys, ctm_a, ctv_c, block_size)
+    result = ct_prod.decrypt(cc, keys.secretKey)
+    result = np.round(result, decimals=1)
+    print(f"Matching = [{np.array_equal(result, a @ c)}] \n{result}")
 
     # # %%
     # print("\nDot product c.d:")
     # print(np.dot(c, d))
 
     # %%
-    print("\nElement-wise multiplication a.b:")
+    print("\nHadamard Product: a.b:")
     print(np.multiply(a, b))
 
     # # %%

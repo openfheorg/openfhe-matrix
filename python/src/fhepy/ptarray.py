@@ -1,3 +1,5 @@
+from typing import Tuple
+
 # import openfhe related libraries
 import openfhe
 import openfhe_matrix
@@ -49,9 +51,8 @@ class PTArray:
         )
 
 
-# Check the name convention
 # encode_matrix
-def ravel(
+def ravel_mat(
     cc: CC,
     data: list,
     num_slots: int,
@@ -73,7 +74,7 @@ def ravel(
     return cc.MakeCKKSPackedPlaintext(packed_data)
 
 
-def ravel(
+def ravel_vec(
     cc: CC,
     data: list,
     num_slots: int,
